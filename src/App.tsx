@@ -37,6 +37,7 @@ import {
   serializeBlocksToMarkdown,
 } from './services/markdownParser';
 import { DataTableWorkspace } from './components/DataTableWorkspace';
+import { Logo } from './components/Logo';
 
 export default function App() {
   const [tab, setTab] = useState<'chat' | 'gems' | 'settings'>('chat');
@@ -252,14 +253,16 @@ export default function App() {
     <div className="min-h-screen flex justify-center bg-slate-100 dark:bg-surface-950">
       <div className="w-full max-w-2xl h-[100dvh] bg-white dark:bg-surface-900 flex flex-col overflow-hidden sm:border-x border-slate-200 dark:border-slate-800">
         {/* Header */}
-        <header className="shrink-0 px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div>
-            <div className="font-bold text-base flex items-center gap-2">
-              <span>GemDeck</span>
-              <span className="text-[10px] uppercase px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400">
-                {settings.demoMode ? 'Demo' : 'Live'}
-              </span>
-            </div>
+        <header className="shrink-0 px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Logo className="w-8 h-8 shrink-0 rounded-lg shadow-sm" />
+            <div className="min-w-0">
+              <div className="font-bold text-base flex items-center gap-2">
+                <span>GemDeck AI</span>
+                <span className="text-[10px] uppercase px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400">
+                  {settings.demoMode ? 'Demo' : 'Live'}
+                </span>
+              </div>
             <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
               <span>{activeGem.icon} {activeGem.name} · {PROVIDER_META[activeGem.provider].short} ·</span>
               <select
@@ -276,7 +279,8 @@ export default function App() {
               </select>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
             <button onClick={startNewChat} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800">
               <SquarePen className="w-5 h-5" />
             </button>

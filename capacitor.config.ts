@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.gemdeck.app',
-  appName: 'GemDeck',
+  appName: 'GemDeck AI',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

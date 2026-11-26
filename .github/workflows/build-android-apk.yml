@@ -62,6 +62,7 @@ jobs:
           if [ ! -d "android" ]; then
             npx cap add android
           fi
+          npx --yes @capacitor/assets generate --android --iconBackgroundColor '#312E81' --iconBackgroundColorDark '#312E81' --splashBackgroundColor '#0F172A' --splashBackgroundColorDark '#0F172A'
           npx cap sync android
           chmod +x android/gradlew
 
