@@ -15,6 +15,10 @@ export interface ParsedAttachment {
   dataUrl?: string;
 }
 
+export interface StoredFile extends ParsedAttachment {
+  savedAt: number;
+}
+
 export interface GemConfig {
   id: string;
   name: string;

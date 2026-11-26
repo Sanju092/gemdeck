@@ -3,6 +3,8 @@ import { marked } from 'marked';
 import {
   Download,
   FileDown,
+  FolderOpen,
+  History,
   MessageSquare,
   Moon,
   Paperclip,
@@ -16,18 +18,22 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import type { AppSettings, ChatSession, GemConfig, ParsedAttachment, ProviderId } from './types';
+import type { AppSettings, ChatSession, GemConfig, ParsedAttachment, ProviderId, StoredFile } from './types';
 import { DEFAULT_GEMS, PROVIDER_META, getProviderModels } from './data/defaultGems';
 import {
   deleteGem,
+  deleteSession,
+  deleteStoredFile,
   exportFullBackup,
   importFullBackup,
   loadGems,
   loadSessions,
   loadSettings,
+  loadStoredFiles,
   saveGem,
   saveSession,
   saveSettings,
+  saveStoredFile,
 } from './services/storage';
 import { parseFile } from './services/fileParser';
 import { runGem } from './services/aiProviders';
@@ -40,11 +46,12 @@ import { DataTableWorkspace } from './components/DataTableWorkspace';
 import { Logo } from './components/Logo';
 
 export default function App() {
-  const [tab, setTab] = useState<'chat' | 'gems' | 'settings'>('chat');
+  const [tab, setTab] = useState<'chat' | 'history' | 'files' | 'gems' | 'settings'>('chat');
   const [gems, setGems] = useState<GemConfig[]>(DEFAULT_GEMS);
   const [activeGemId, setActiveGemId] = useState<string>(DEFAULT_GEMS[0].id);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>('');
+  const [storedFiles, setStoredFiles] = useState<StoredFile[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     theme: 'dark',
     demoMode: true,
@@ -59,19 +66,22 @@ export default function App() {
   const [settingsModelProvider, setSettingsModelProvider] = useState<ProviderId>('gemini');
   const [settingsModelInput, setSettingsModelInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const libraryFileInputRef = useRef<HTMLInputElement>(null);
   const refFileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
-      const [loadedGems, loadedSessions, loadedSettings] = await Promise.all([
+      const [loadedGems, loadedSessions, loadedSettings, loadedFiles] = await Promise.all([
         loadGems(),
         loadSessions(),
         loadSettings(),
+        loadStoredFiles(),
       ]);
       setGems(loadedGems);
       setActiveGemId(loadedGems[0]?.id || DEFAULT_GEMS[0].id);
       setSettings(loadedSettings);
+      setStoredFiles(loadedFiles);
       if (loadedSessions.length) {
         setSessions(loadedSessions);
         setActiveSessionId(loadedSessions[0].id);
@@ -135,8 +145,43 @@ export default function App() {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const parsed = await Promise.all(files.map(parseFile));
+    const saved: StoredFile[] = parsed.map((p) => ({ ...p, savedAt: Date.now() }));
+    await Promise.all(saved.map(saveStoredFile));
+    setStoredFiles((prev) => [...saved, ...prev]);
     setAttachments((prev) => [...prev, ...parsed]);
     e.target.value = '';
+  };
+
+  const handleLibraryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const parsed = await Promise.all(files.map(parseFile));
+    const saved: StoredFile[] = parsed.map((p) => ({ ...p, savedAt: Date.now() }));
+    await Promise.all(saved.map(saveStoredFile));
+    setStoredFiles((prev) => [...saved, ...prev]);
+    e.target.value = '';
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    await deleteSession(sessionId);
+    const remaining = sessions.filter((s) => s.id !== sessionId);
+    if (remaining.length === 0) {
+      const fresh: ChatSession = {
+        id: `sess-${Date.now()}`,
+        title: 'New Chat',
+        gemId: activeGem.id,
+        updatedAt: Date.now(),
+        messages: [],
+      };
+      await saveSession(fresh);
+      setSessions([fresh]);
+      setActiveSessionId(fresh.id);
+    } else {
+      setSessions(remaining);
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(remaining[0].id);
+      }
+    }
   };
 
   const handleRun = async () => {
@@ -423,6 +468,130 @@ export default function App() {
             </>
           )}
 
+          {tab === 'history' && (
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <h1 className="font-bold text-base">Chat History ({sessions.length})</h1>
+                <button
+                  onClick={startNewChat}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> New Chat
+                </button>
+              </div>
+              {sessions.map((s) => {
+                const gem = gems.find((g) => g.id === s.gemId) || gems[0];
+                const isActive = s.id === activeSession?.id;
+                return (
+                  <div
+                    key={s.id}
+                    className={`p-3 rounded-2xl border flex items-center justify-between gap-2 ${
+                      isActive
+                        ? 'bg-indigo-500/10 border-indigo-500/40'
+                        : 'bg-slate-50 dark:bg-surface-800 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <button
+                      onClick={() => {
+                        setActiveSessionId(s.id);
+                        if (gem) setActiveGemId(gem.id);
+                        setTab('chat');
+                      }}
+                      className="text-left min-w-0 flex-1"
+                    >
+                      <div className="font-semibold text-sm truncate">
+                        {gem?.icon} {s.title || 'New Chat'}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {s.messages.length} message{s.messages.length === 1 ? '' : 's'} ·{' '}
+                        {new Date(s.updatedAt).toLocaleString()}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSession(s.id)}
+                      className="p-2 rounded-lg text-slate-400 hover:text-rose-500 shrink-0"
+                      aria-label={`Delete chat ${s.title}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {tab === 'files' && (
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h1 className="font-bold text-base">Stored Files ({storedFiles.length})</h1>
+                  <p className="text-xs text-slate-500">Saved on-device across chats and restarts</p>
+                </div>
+                <button
+                  onClick={() => libraryFileInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Store File
+                </button>
+                <input
+                  ref={libraryFileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleLibraryUpload}
+                />
+              </div>
+              {!storedFiles.length && (
+                <div className="p-6 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-500">
+                  No stored files yet. Files you attach in Chat or upload here are saved on-device so you can reuse them anytime.
+                </div>
+              )}
+              {storedFiles.map((f) => (
+                <div
+                  key={f.id}
+                  className="p-3 rounded-2xl bg-slate-50 dark:bg-surface-800 border border-slate-200 dark:border-slate-700 space-y-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate">{f.name}</div>
+                      <div className="text-xs text-slate-500">
+                        {f.category} · {(f.size / 1024).toFixed(1)} KB · {new Date(f.savedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => {
+                          setAttachments((prev) =>
+                            prev.some((a) => a.id === f.id) ? prev : [...prev, f]
+                          );
+                          setTab('chat');
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold"
+                      >
+                        Use in Chat
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await deleteStoredFile(f.id);
+                          setStoredFiles((prev) => prev.filter((item) => item.id !== f.id));
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500"
+                        aria-label={`Delete ${f.name}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  {f.textContent && (
+                    <div className="text-[11px] font-mono text-slate-500 bg-white dark:bg-surface-900 rounded-xl p-2 max-h-20 overflow-hidden">
+                      {f.textContent.slice(0, 200)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {tab === 'gems' && (
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -631,6 +800,7 @@ export default function App() {
                     const restored = await importFullBackup(await f.text());
                     setGems(restored.gems);
                     setSessions(restored.sessions);
+                    setStoredFiles(restored.files);
                   }}
                 />
               </div>
@@ -639,18 +809,34 @@ export default function App() {
         </main>
 
         {/* Bottom Nav */}
-        <nav className="shrink-0 border-t border-slate-200 dark:border-slate-800 grid grid-cols-3 p-1.5">
+        <nav className="shrink-0 border-t border-slate-200 dark:border-slate-800 grid grid-cols-5 p-1.5">
           <button
             onClick={() => setTab('chat')}
-            className={`flex flex-col items-center py-1.5 rounded-xl text-xs ${
+            className={`flex flex-col items-center py-1.5 rounded-xl text-[11px] ${
               tab === 'chat' ? 'text-indigo-500 bg-indigo-500/10 font-semibold' : 'text-slate-500'
             }`}
           >
             <MessageSquare className="w-5 h-5" /> Chat
           </button>
           <button
+            onClick={() => setTab('history')}
+            className={`flex flex-col items-center py-1.5 rounded-xl text-[11px] ${
+              tab === 'history' ? 'text-indigo-500 bg-indigo-500/10 font-semibold' : 'text-slate-500'
+            }`}
+          >
+            <History className="w-5 h-5" /> History
+          </button>
+          <button
+            onClick={() => setTab('files')}
+            className={`flex flex-col items-center py-1.5 rounded-xl text-[11px] ${
+              tab === 'files' ? 'text-indigo-500 bg-indigo-500/10 font-semibold' : 'text-slate-500'
+            }`}
+          >
+            <FolderOpen className="w-5 h-5" /> Files
+          </button>
+          <button
             onClick={() => setTab('gems')}
-            className={`flex flex-col items-center py-1.5 rounded-xl text-xs ${
+            className={`flex flex-col items-center py-1.5 rounded-xl text-[11px] ${
               tab === 'gems' ? 'text-indigo-500 bg-indigo-500/10 font-semibold' : 'text-slate-500'
             }`}
           >
@@ -658,7 +844,7 @@ export default function App() {
           </button>
           <button
             onClick={() => setTab('settings')}
-            className={`flex flex-col items-center py-1.5 rounded-xl text-xs ${
+            className={`flex flex-col items-center py-1.5 rounded-xl text-[11px] ${
               tab === 'settings' ? 'text-indigo-500 bg-indigo-500/10 font-semibold' : 'text-slate-500'
             }`}
           >
