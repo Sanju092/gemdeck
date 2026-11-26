@@ -34,6 +34,18 @@ export const PROVIDER_META: Record<
   },
 };
 
+export function getProviderModels(
+  provider: ProviderId,
+  customModels?: Partial<Record<ProviderId, string[]>>,
+  currentModel?: string
+): string[] {
+  const list = [...PROVIDER_META[provider].models, ...(customModels?.[provider] || [])];
+  if (currentModel && currentModel.trim()) {
+    list.push(currentModel.trim());
+  }
+  return Array.from(new Set(list));
+}
+
 export const DEFAULT_GEMS: GemConfig[] = [
   {
     id: 'gem-invoices',

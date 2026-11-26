@@ -63,6 +63,7 @@ export async function loadSettings(): Promise<AppSettings> {
     theme: 'dark',
     demoMode: true,
     apiKeys: { gemini: '', openai: '', anthropic: '', nvidia: '' },
+    customModels: { gemini: [], openai: [], anthropic: [], nvidia: [] },
   };
   try {
     const { value } = await Preferences.get({ key: SETTINGS_KEY });
@@ -72,6 +73,7 @@ export async function loadSettings(): Promise<AppSettings> {
       ...defaults,
       ...parsed,
       apiKeys: { ...defaults.apiKeys, ...(parsed.apiKeys || {}) },
+      customModels: { ...defaults.customModels, ...(parsed.customModels || {}) },
     };
   } catch {
     return defaults;

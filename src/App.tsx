@@ -14,9 +14,10 @@ import {
   Sun,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import type { AppSettings, ChatSession, GemConfig, ParsedAttachment, ProviderId } from './types';
-import { DEFAULT_GEMS, PROVIDER_META } from './data/defaultGems';
+import { DEFAULT_GEMS, PROVIDER_META, getProviderModels } from './data/defaultGems';
 import {
   deleteGem,
   exportFullBackup,
@@ -47,11 +48,15 @@ export default function App() {
     theme: 'dark',
     demoMode: true,
     apiKeys: { gemini: '', openai: '', anthropic: '', nvidia: '' },
+    customModels: { gemini: [], openai: [], anthropic: [], nvidia: [] },
   });
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<ParsedAttachment[]>([]);
   const [running, setRunning] = useState(false);
   const [editingGem, setEditingGem] = useState<GemConfig | null>(null);
+  const [newModelInput, setNewModelInput] = useState('');
+  const [settingsModelProvider, setSettingsModelProvider] = useState<ProviderId>('gemini');
+  const [settingsModelInput, setSettingsModelInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refFileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +99,35 @@ export default function App() {
   const updateSettings = async (next: AppSettings) => {
     setSettings(next);
     await saveSettings(next);
+  };
+
+  const addCustomModel = async (provider: ProviderId, rawId: string): Promise<string | null> => {
+    const modelId = rawId.trim();
+    if (!modelId) return null;
+    const existing = getProviderModels(provider, settings.customModels);
+    if (!existing.includes(modelId)) {
+      const nextList = [...(settings.customModels[provider] || []), modelId];
+      await updateSettings({
+        ...settings,
+        customModels: { ...settings.customModels, [provider]: nextList },
+      });
+    }
+    return modelId;
+  };
+
+  const removeCustomModel = async (provider: ProviderId, modelId: string) => {
+    const nextList = (settings.customModels[provider] || []).filter((m) => m !== modelId);
+    await updateSettings({
+      ...settings,
+      customModels: { ...settings.customModels, [provider]: nextList },
+    });
+  };
+
+  const handleQuickModelChange = async (modelId: string) => {
+    if (!activeGem) return;
+    const updated = { ...activeGem, model: modelId };
+    await saveGem(updated);
+    setGems((prev) => prev.map((g) => (g.id === updated.id ? updated : g)));
   };
 
   const handleAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,8 +260,20 @@ export default function App() {
                 {settings.demoMode ? 'Demo' : 'Live'}
               </span>
             </div>
-            <div className="text-xs text-slate-500">
-              {activeGem.icon} {activeGem.name} · {PROVIDER_META[activeGem.provider].short}
+            <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+              <span>{activeGem.icon} {activeGem.name} · {PROVIDER_META[activeGem.provider].short} ·</span>
+              <select
+                aria-label="Active model"
+                value={activeGem.model}
+                onChange={(e) => handleQuickModelChange(e.target.value)}
+                className="bg-slate-100 dark:bg-surface-800 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded-md font-mono text-[11px] border border-slate-200 dark:border-slate-700 max-w-[170px] truncate"
+              >
+                {getProviderModels(activeGem.provider, settings.customModels, activeGem.model).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -484,6 +530,76 @@ export default function App() {
                 ))}
               </div>
 
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-surface-800 border border-slate-200 dark:border-slate-700 space-y-3">
+                <div>
+                  <h2 className="font-semibold text-sm">Custom Models</h2>
+                  <p className="text-xs text-slate-500">Add any model ID or name (e.g. gemini-2.5-flash-preview-05-20) to use it in Gems and Chat.</p>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={settingsModelProvider}
+                    onChange={(e) => setSettingsModelProvider(e.target.value as ProviderId)}
+                    className="px-2.5 py-2 rounded-xl bg-white dark:bg-surface-900 border border-slate-200 dark:border-slate-700 text-xs"
+                  >
+                    {(Object.keys(PROVIDER_META) as ProviderId[]).map((pid) => (
+                      <option key={pid} value={pid}>
+                        {PROVIDER_META[pid].short}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={settingsModelInput}
+                    onChange={(e) => setSettingsModelInput(e.target.value)}
+                    placeholder="Model ID (e.g. gemini-2.5-flash)"
+                    className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white dark:bg-surface-900 border border-slate-200 dark:border-slate-700 text-xs font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const added = await addCustomModel(settingsModelProvider, settingsModelInput);
+                      if (added) setSettingsModelInput('');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold shrink-0"
+                  >
+                    Add
+                  </button>
+                </div>
+                {(Object.keys(PROVIDER_META) as ProviderId[]).some(
+                  (pid) => (settings.customModels[pid] || []).length > 0
+                ) && (
+                  <div className="space-y-1.5 pt-1">
+                    {(Object.keys(PROVIDER_META) as ProviderId[]).map((pid) => {
+                      const list = settings.customModels[pid] || [];
+                      if (!list.length) return null;
+                      return (
+                        <div key={pid} className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-slate-500 mr-1">
+                            {PROVIDER_META[pid].short}:
+                          </span>
+                          {list.map((m) => (
+                            <span
+                              key={m}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white dark:bg-surface-900 border border-slate-200 dark:border-slate-700 text-[11px] font-mono"
+                            >
+                              {m}
+                              <button
+                                type="button"
+                                onClick={() => removeCustomModel(pid, m)}
+                                className="text-slate-400 hover:text-rose-500"
+                                aria-label={`Remove ${m}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={async () => {
@@ -588,12 +704,34 @@ export default function App() {
                   onChange={(e) => setEditingGem({ ...editingGem, model: e.target.value })}
                   className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-surface-800 text-xs font-mono"
                 >
-                  {PROVIDER_META[editingGem.provider].models.map((m) => (
+                  {getProviderModels(editingGem.provider, settings.customModels, editingGem.model).map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newModelInput}
+                  onChange={(e) => setNewModelInput(e.target.value)}
+                  placeholder={`Add custom ${PROVIDER_META[editingGem.provider].short} model ID...`}
+                  className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-100 dark:bg-surface-800 text-xs font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const added = await addCustomModel(editingGem.provider, newModelInput);
+                    if (added) {
+                      setEditingGem({ ...editingGem, model: added });
+                      setNewModelInput('');
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold shrink-0"
+                >
+                  + Add Model
+                </button>
               </div>
               <textarea
                 required

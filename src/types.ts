@@ -48,10 +48,13 @@ export interface ChatSession {
 
 export type ApiKeysMap = Record<ProviderId, string>;
 
+export type CustomModelsMap = Record<ProviderId, string[]>;
+
 export interface AppSettings {
   theme: 'dark' | 'light';
   demoMode: boolean;
   apiKeys: ApiKeysMap;
+  customModels: CustomModelsMap;
 }
 
 export type ContentBlock =
