@@ -35,9 +35,7 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
       pages.push(`--- Page ${i} ---
 ${text}`);
     }
-    return pages.join('
-
-').slice(0, 80000);
+    return pages.join('\n\n').slice(0, 80000);
   } catch {
     return '[PDF attached as binary payload]';
   }
@@ -88,9 +86,7 @@ ${csv}`;
       mimeType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       size: file.size,
       category: 'spreadsheet',
-      textContent: sheets.join('
-
-').slice(0, 80000),
+      textContent: sheets.join('\n\n').slice(0, 80000),
     };
   }
 
